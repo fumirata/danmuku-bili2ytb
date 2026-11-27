@@ -1,4 +1,7 @@
+import type { BiliPage, VideoInfo } from '../../src/bili/client';
 import { parseDanmakuFile } from '../../src/bili/parse';
+import type { ListEntry } from '../../src/core/list';
+import type { ListSuggestion } from '../../src/lists';
 import { concatOffsets, mergeComments } from '../../src/core/merge';
 import type { RawComment, Settings, Source } from '../../src/core/types';
 import { send } from '../../src/messaging';
@@ -16,6 +19,7 @@ export class Session {
   private panel: Panel;
   private mergeTimer = 0;
   private dead = false;
+  private suggestions: ListSuggestion[] = [];
 
   constructor(
     private ytId: string,
@@ -31,6 +35,7 @@ export class Session {
       retry: (id) => this.load(this.sources.find((s) => s.id === id), true),
       setEnabled: (on) => void saveSettings({ enabled: on }),
       currentTime: () => els.video.currentTime,
+      addEntries: (entries) => this.addEntries(entries),
       search: (keyword, page) => send({ type: 'search', keyword, page }),
       videoTitle: () =>
         document.querySelector('ytd-watch-metadata h1')?.textContent?.trim() ||
@@ -43,9 +48,23 @@ export class Session {
   }
 
   async start() {
-    this.sources = await loadBinding(this.ytId);
+    const [sources, suggestions] = await Promise.all([
+      loadBinding(this.ytId),
+      send({ type: 'lookupLists', ytId: this.ytId }).catch((e: unknown) => {
+        console.warn('[bili2ytb] list lookup failed', e);
+        return [];
+      }),
+    ]);
     if (this.dead) return;
+    this.sources = sources;
+    this.suggestions = suggestions;
     this.render();
+    const first = suggestions[0];
+    if (this.settings.autoApplyLists && !sources.length && first)
+      void this.addEntries(first.entries).then(
+        (note) => this.panel.setMsg(`已自动使用订阅「${first.name}」：${note}`, true),
+        (e: Error) => this.panel.setMsg(`自动使用订阅失败：${e.message}`),
+      );
     await Promise.all(this.sources.map((s) => this.load(s)));
   }
 
@@ -97,28 +116,72 @@ export class Session {
       note = `该视频共有 ${info.pages.length} 个分P，已添加 P1。勾选"全部分P按顺序拼接"可一次添加全部。`;
     }
     const offsets = concatOffsets(pages.map((p) => p.duration));
-    const added: Source[] = [];
-    pages.forEach((p, i) => {
-      const id = `${info.bvid}-p${p.page}`;
-      if (this.sources.some((s) => s.id === id)) return;
-      const multi = info.pages.length > 1;
-      added.push({
-        id,
-        bvid: info.bvid,
-        cid: p.cid,
-        page: p.page,
-        title: multi ? `${info.title} · P${p.page} ${p.part}` : info.title,
-        duration: p.duration,
-        offset: offsets[i]!,
-        enabled: true,
-      });
-    });
+    const added = this.makeSources(info, pages, offsets);
     if (!added.length) throw new Error('这个视频已经添加过了');
+    await this.commit(added);
+    return note ?? `已添加 ${added.length} 个来源`;
+  }
+
+  /** New sources for the given pages, skipping pages already bound. */
+  private makeSources(info: VideoInfo, pages: BiliPage[], offsets: number[]): Source[] {
+    const multi = info.pages.length > 1;
+    return pages.flatMap((p, i) => {
+      const id = `${info.bvid}-p${p.page}`;
+      if (this.sources.some((s) => s.id === id)) return [];
+      return [
+        {
+          id,
+          bvid: info.bvid,
+          cid: p.cid,
+          page: p.page,
+          title: multi ? `${info.title} · P${p.page} ${p.part}` : info.title,
+          duration: p.duration,
+          offset: offsets[i]!,
+          enabled: true,
+        },
+      ];
+    });
+  }
+
+  private async commit(added: Source[]) {
     this.sources.push(...added);
     await saveBinding(this.ytId, this.sources);
     this.render();
     void Promise.all(added.map((s) => this.load(s)));
-    return note ?? `已添加 ${added.length} 个来源`;
+  }
+
+  /** Adds entries from a subscribed list; entries already bound only take the list's offset. */
+  private async addEntries(entries: ListEntry[]): Promise<string> {
+    const added: Source[] = [];
+    let updated = 0;
+    const errors: string[] = [];
+    for (const e of entries) {
+      const existing = this.sources.find((s) => s.id === `${e.bvid}-p${e.page}`);
+      if (existing) {
+        if (existing.offset !== e.offset) {
+          this.update(existing.id, { offset: e.offset });
+          updated++;
+        }
+        continue;
+      }
+      try {
+        const info = await send({ type: 'resolve', input: e.bvid });
+        const page = info.pages.find((p) => p.page === e.page);
+        if (!page) throw new Error(`没有 P${e.page}`);
+        added.push(...this.makeSources(info, [page], [e.offset]));
+      } catch (err) {
+        errors.push(`${e.bvid}：${(err as Error).message}`);
+      }
+    }
+    if (this.dead) return '';
+    if (added.length) await this.commit(added);
+    if (!added.length && !updated && errors.length) throw new Error(errors.join('\n'));
+    const parts = [
+      added.length ? `已添加 ${added.length} 个来源` : '',
+      updated ? `已更新 ${updated} 个偏移` : '',
+      ...errors,
+    ].filter(Boolean);
+    return parts.join('；') || '没有需要添加的来源';
   }
 
   private async addFile(file: File): Promise<string> {
@@ -187,6 +250,7 @@ export class Session {
       enabled: this.settings.enabled,
       sources: this.sources,
       status: this.status,
+      suggestions: this.suggestions,
       shownCount: this.lastShown,
       totalCount: total,
     });

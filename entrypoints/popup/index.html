@@ -16,6 +16,14 @@
       .row { display: flex; gap: 8px; }
       button { padding: 4px 10px; }
       #msg { color: #1a7f37; min-height: 1.5em; }
+      h2 { font-size: 14px; margin: 14px 0 6px; border-top: 1px solid #eee; padding-top: 10px; }
+      input[type='text'] { flex: 1; min-width: 0; font: inherit; padding: 3px 6px; }
+      .sub { padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+      .sub .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
+      .sub .url { color: #888; font-size: 11px; word-break: break-all; }
+      .sub .err { color: #c5221f; font-size: 12px; }
+      .sub button { padding: 0 6px; font-size: 12px; }
+      .tools { display: flex; gap: 2px; }
     </style>
   </head>
   <body>
@@ -61,6 +69,24 @@
       </div>
       <div class="hint">绑定 = 每个 YouTube 视频对应的 B 站来源与偏移</div>
     </div>
+    <h2>订阅对照表</h2>
+    <div class="row">
+      <input type="text" id="subUrl" placeholder="订阅文件的 https 地址（如 Gist 的 raw 链接）" />
+      <button id="subscribe">订阅</button>
+    </div>
+    <div id="subs"></div>
+    <div class="field">
+      <label><span>视频没有绑定时自动使用订阅</span><input type="checkbox" id="autoApplyLists" /></label>
+      <div class="row" style="margin-top: 6px">
+        <button id="refreshAll">全部刷新</button>
+      </div>
+    </div>
+    <h2>分享我的绑定</h2>
+    <div class="row">
+      <input type="text" id="listName" placeholder="列表名称，如：某某的搬运对照表" />
+      <button id="exportList">导出订阅文件</button>
+    </div>
+    <div class="hint">把导出的 JSON 上传到 GitHub Gist 等处，把它的 raw 链接发给别人订阅。本地导入的弹幕文件不会导出。</div>
     <div id="msg"></div>
     <script type="module" src="./main.ts"></script>
   </body>

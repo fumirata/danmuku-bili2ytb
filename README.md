@@ -35,7 +35,9 @@ git push --follow-tags     # 推送提交和标签，触发发布
 4. 用 ±0.1 / ±1 / ±10 按钮或直接输入秒数来调整偏移；也可以在两边的同一画面点"对齐"，输入 B 站视频里对应的时间。
 5. B 站接口不可用时，可以点"导入文件"，导入 B 站 XML 弹幕或 ASS 弹幕字幕（如 danmaku2ass / biliass 生成的）作为来源。导入的数据保存在扩展的 IndexedDB 中，删除来源时一起删除；导出绑定时不包含文件内容。
 6. 弹幕在本地缓存 24 小时；来源加载失败时点"重试"会跳过缓存重新拉取。
-7. 扩展图标弹出页：设置不透明度、字号、速度、显示区域、每秒上限、去重、屏蔽类型和屏蔽词，以及导入/导出绑定。
+7. 订阅别人的对照表：在弹出页"订阅对照表"里填订阅文件的 https 地址。打开 YouTube 视频时，如果订阅里有这个视频，面板会显示"订阅建议"，点"加入"即可；也可以打开"视频没有绑定时自动使用订阅"。自己的绑定总是优先，订阅之间按列表顺序排优先级，每 12 小时自动更新。
+8. 分享自己的绑定：在弹出页"分享我的绑定"里填一个名称，点"导出订阅文件"，把 `bili2ytb-list.json` 上传到 GitHub Gist 等处，把 raw 链接发给别人。格式见 [docs/list-format.md](docs/list-format.md)。
+9. 扩展图标弹出页：设置不透明度、字号、速度、显示区域、每秒上限、去重、屏蔽类型和屏蔽词，以及导入/导出绑定。
 
 ## 结构
 
@@ -43,7 +45,8 @@ git push --follow-tags     # 推送提交和标签，触发发布
 |---|---|
 | `src/bili/` | B 站接口（`client.ts`，含搜索与 WBI 签名 `wbi.ts`）、XML 与 protobuf 解析（`parse.ts`）、链接解析（`input.ts`） |
 | `src/core/` | 类型、合并（偏移 → 过滤 → 去重 → 密度控制）、屏蔽规则 |
-| `src/storage.ts` | 设置（sync）与每个 YouTube 视频的绑定（local） |
+| `src/storage.ts` | 设置与订阅列表（sync）、每个 YouTube 视频的绑定（local） |
+| `src/lists.ts`、`src/core/list.ts` | 订阅文件的下载、缓存、查询，以及格式校验与导出 |
 | `entrypoints/background.ts` | 跨域请求 B 站；IndexedDB 缓存（`src/idb.ts`）与本地文件存储 |
 | `entrypoints/youtube.content/` | 单页导航、播放器适配、Canvas 弹幕层、控制面板 |
 | `entrypoints/popup/` | 全局设置 |

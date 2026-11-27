@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import type { BiliErrorKind, SearchResult, VideoInfo } from './bili/client';
 import type { RawComment } from './core/types';
+import type { ListStatus, ListSuggestion } from './lists';
 
 export type Request =
   | { type: 'resolve'; input: string }
@@ -8,7 +9,11 @@ export type Request =
   | { type: 'putFile'; id: string; comments: RawComment[] }
   | { type: 'getFile'; id: string }
   | { type: 'deleteFile'; id: string }
-  | { type: 'search'; keyword: string; page?: number };
+  | { type: 'search'; keyword: string; page?: number }
+  | { type: 'lookupLists'; ytId: string }
+  | { type: 'listStatus' }
+  | { type: 'refreshLists'; url?: string }
+  | { type: 'subscribe'; url: string };
 
 export interface ResponseMap {
   resolve: VideoInfo;
@@ -17,6 +22,10 @@ export interface ResponseMap {
   getFile: RawComment[];
   deleteFile: null;
   search: SearchResult;
+  lookupLists: ListSuggestion[];
+  listStatus: ListStatus[];
+  refreshLists: ListStatus[];
+  subscribe: ListStatus;
 }
 
 export type Reply<T> = { ok: true; data: T } | { ok: false; error: string; kind: BiliErrorKind };

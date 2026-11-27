@@ -4,7 +4,9 @@ import { BiliError, fetchComments, resolveVideo, searchVideos } from '../src/bil
 import { parseBiliInput } from '../src/bili/input';
 import type { RawComment } from '../src/core/types';
 import { idbDelete, idbGet, idbPrune, idbPut } from '../src/idb';
+import { listStatus, lookup, onSubscriptionsEdited, REFRESH_MINUTES, refreshAll, refreshList, subscribe } from '../src/lists';
 import type { Reply, Request } from '../src/messaging';
+import { onSubscriptionsChanged } from '../src/storage';
 
 /** Fetched Bilibili comments are kept for a day; local files until their source is removed. */
 const CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -43,6 +45,14 @@ async function handle(req: Request): Promise<unknown> {
       if (!list) throw new BiliError('本地弹幕文件数据已丢失，请删除后重新导入', 'notfound');
       return list;
     }
+    case 'lookupLists':
+      return lookup(req.ytId);
+    case 'listStatus':
+      return listStatus();
+    case 'refreshLists':
+      return req.url ? [await refreshList(req.url)] : refreshAll();
+    case 'subscribe':
+      return subscribe(req.url);
     case 'search':
       return searchVideos(req.keyword, req.page);
     case 'deleteFile':
@@ -53,6 +63,19 @@ async function handle(req: Request): Promise<unknown> {
 
 export default defineBackground(() => {
   void idbPrune<CacheEntry>('comments', (e) => Date.now() - e.at > CACHE_TTL).catch(() => {});
+
+  const ALARM = 'refresh-lists';
+  void browser.alarms.get(ALARM).then((a) => {
+    if (!a) void browser.alarms.create(ALARM, { periodInMinutes: REFRESH_MINUTES, delayInMinutes: 1 });
+  });
+  browser.alarms.onAlarm.addListener((a) => {
+    if (a.name === ALARM) void refreshAll(true);
+  });
+  onSubscriptionsChanged((next, prev) => void onSubscriptionsEdited(next, prev));
+  // The popup closes while Chrome shows the permission prompt, so retry failed lists from here.
+  browser.permissions.onAdded.addListener((p) => {
+    if (p.origins?.length) void refreshAll();
+  });
 
   browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handle(msg as Request).then(

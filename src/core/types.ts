@@ -54,6 +54,10 @@ export interface Settings {
   blockModes: DmMode[];
   /** plain substrings, or /regex/flags */
   blockKeywords: string[];
+  /** add sources from subscribed lists automatically when a video has no binding of its own */
+  autoApplyLists: boolean;
+  /** name written into exported list files */
+  listName: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -67,6 +71,8 @@ export const DEFAULT_SETTINGS: Settings = {
   dedupeWindow: 3,
   blockModes: [],
   blockKeywords: [],
+  autoApplyLists: false,
+  listName: '',
 };
 
 export function biliMode(mode: number): DmMode | null {

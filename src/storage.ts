@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import { DEFAULT_SETTINGS, type Settings, type Source } from './core/types';
 
 const SETTINGS_KEY = 'settings';
+const SUBS_KEY = 'subscriptions';
 const bindingKey = (ytId: string) => `binding:${ytId}`;
 
 export async function loadSettings(): Promise<Settings> {
@@ -9,10 +10,21 @@ export async function loadSettings(): Promise<Settings> {
   return { ...DEFAULT_SETTINGS, ...((r[SETTINGS_KEY] as Partial<Settings> | undefined) ?? {}) };
 }
 
-export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await loadSettings()), ...patch };
-  await browser.storage.sync.set({ [SETTINGS_KEY]: next });
-  return next;
+let saving: Promise<unknown> = Promise.resolve();
+
+/**
+ * Read-modify-write of the whole settings object. Calls are queued: two change events firing together
+ * (e.g. a text field's blur and a checkbox click) would otherwise both read the old value and the later
+ * write would drop the earlier one's change.
+ */
+export function saveSettings(patch: Partial<Settings>): Promise<Settings> {
+  const run = saving.then(async () => {
+    const next = { ...(await loadSettings()), ...patch };
+    await browser.storage.sync.set({ [SETTINGS_KEY]: next });
+    return next;
+  });
+  saving = run.catch(() => {});
+  return run;
 }
 
 export function onSettingsChanged(cb: (s: Settings) => void): () => void {
@@ -48,4 +60,28 @@ export async function importBindings(data: Record<string, Source[]>): Promise<nu
   const entries = Object.entries(data).filter(([k, v]) => /^[\w-]{11}$/.test(k) && Array.isArray(v));
   await browser.storage.local.set(Object.fromEntries(entries.map(([k, v]) => [bindingKey(k), v])));
   return entries.length;
+}
+
+/** Subscribed mapping lists, in priority order. Kept in sync storage so they follow the user's Chrome profile. */
+export interface Subscription {
+  url: string;
+  enabled: boolean;
+}
+
+export async function loadSubscriptions(): Promise<Subscription[]> {
+  const r = await browser.storage.sync.get(SUBS_KEY);
+  return (r[SUBS_KEY] as Subscription[] | undefined) ?? [];
+}
+
+export async function saveSubscriptions(subs: Subscription[]): Promise<void> {
+  await browser.storage.sync.set({ [SUBS_KEY]: subs });
+}
+
+export function onSubscriptionsChanged(cb: (next: Subscription[], prev: Subscription[]) => void): () => void {
+  const listener = (changes: Record<string, { newValue?: unknown; oldValue?: unknown }>, area: string) => {
+    const c = changes[SUBS_KEY];
+    if (area === 'sync' && c) cb((c.newValue as Subscription[]) ?? [], (c.oldValue as Subscription[]) ?? []);
+  };
+  browser.storage.onChanged.addListener(listener);
+  return () => browser.storage?.onChanged.removeListener(listener);
 }

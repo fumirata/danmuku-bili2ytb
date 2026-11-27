@@ -1,6 +1,8 @@
 import type { SearchHit, SearchResult } from '../../src/bili/client';
 import { parseBiliInput } from '../../src/bili/input';
+import type { ListEntry } from '../../src/core/list';
 import type { Source } from '../../src/core/types';
+import type { ListSuggestion } from '../../src/lists';
 import { h } from './dom';
 import { findControlsBar, formatTime, parseTime } from './player';
 
@@ -14,6 +16,7 @@ export interface PanelState {
   enabled: boolean;
   sources: Source[];
   status: Map<string, SourceStatus>;
+  suggestions: ListSuggestion[];
   shownCount: number;
   totalCount: number;
 }
@@ -29,6 +32,8 @@ export interface PanelActions {
   search(keyword: string, page: number): Promise<SearchResult>;
   /** title of the current YouTube video, used when searching with an empty box */
   videoTitle(): string;
+  /** add (or re-offset) entries from a subscribed list */
+  addEntries(entries: ListEntry[]): Promise<string>;
 }
 
 const CSS = `
@@ -57,6 +62,10 @@ button.link { background: none; border: none; color: #8ab4f8; padding: 0 2px; }
 .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { color: #999; font-size: 12px; }
 .err { color: #f28b82; font-size: 12px; }
+.sugg { margin-top: 10px; padding: 6px 8px; background: #1f2a33; border-radius: 6px; }
+.sugg[hidden] { display: none; }
+.sugg .entry { padding: 2px 0; }
+.sugg a { color: #8ab4f8; text-decoration: none; }
 .sync { margin-top: 6px; padding: 6px; background: #262626; border-radius: 6px; }
 .foot { margin-top: 8px; color: #999; font-size: 12px; }
 .results { margin-top: 8px; border-top: 1px solid #333; }
@@ -79,6 +88,7 @@ export class Panel {
   private panel: HTMLDivElement;
   private list: HTMLDivElement;
   private foot: HTMLDivElement;
+  private sugg: HTMLDivElement;
   private enabledBox: HTMLInputElement;
   private msg: HTMLDivElement;
   private button: HTMLElement;
@@ -146,6 +156,7 @@ export class Panel {
       onchange: () => actions.setEnabled(this.enabledBox.checked),
     });
     this.list = h('div', { class: 'section' });
+    this.sugg = h('div', { class: 'sugg', hidden: true });
     this.foot = h('div', { class: 'foot' });
 
     this.panel = h(
@@ -182,6 +193,7 @@ export class Panel {
         this.msg,
         this.results,
       ),
+      this.sugg,
       this.list,
       this.foot,
     );
@@ -238,9 +250,62 @@ export class Panel {
         : [h('div', { class: 'meta' }, '还没有绑定 B 站视频。粘贴链接后点"添加"。')]),
     );
     if (this.search) this.renderResults();
+    this.renderSuggestions(state);
     this.foot.textContent = state.totalCount
       ? `共 ${state.totalCount} 条，显示 ${state.shownCount} 条（过滤/合并后）`
       : '';
+  }
+
+  private renderSuggestions(state: PanelState) {
+    this.sugg.hidden = !state.suggestions.length;
+    const byId = new Map(state.sources.map((s) => [s.id, s]));
+    const run = async (btn: HTMLButtonElement, entries: ListEntry[]) => {
+      btn.disabled = true;
+      this.setMsg('解析中…', true);
+      try {
+        this.setMsg(await this.actions.addEntries(entries), true);
+      } catch (e) {
+        btn.disabled = false;
+        this.setMsg((e as Error).message);
+      }
+    };
+    this.sugg.replaceChildren(
+      ...state.suggestions.map((l) => {
+        const pending = l.entries.filter((e) => byId.get(`${e.bvid}-p${e.page}`)?.offset !== e.offset);
+        const all = h('button', { class: 'small' }, '全部加入');
+        all.addEventListener('click', () => run(all, pending));
+        return h(
+          'div',
+          {},
+          h(
+            'div',
+            { class: 'row between' },
+            h('span', { class: 'meta' }, `订阅「${l.name}」提供了 ${l.entries.length} 个来源`),
+            pending.length > 1 ? all : null,
+          ),
+          ...l.entries.map((e) => {
+            const have = byId.get(`${e.bvid}-p${e.page}`);
+            const same = have?.offset === e.offset;
+            const btn = h(
+              'button',
+              { class: 'small primary', disabled: same },
+              !have ? '加入' : same ? '已添加' : `采用偏移 ${e.offset.toFixed(1)}`,
+            );
+            btn.addEventListener('click', () => run(btn, [e]));
+            return h(
+              'div',
+              { class: 'row between entry' },
+              h(
+                'a',
+                { href: `https://www.bilibili.com/video/${e.bvid}?p=${e.page}`, target: '_blank', rel: 'noopener' },
+                `${e.bvid} · P${e.page} · 偏移 ${e.offset.toFixed(1)}`,
+              ),
+              btn,
+            );
+          }),
+        );
+      }),
+    );
   }
 
   private async runSearch(keyword: string, page: number) {

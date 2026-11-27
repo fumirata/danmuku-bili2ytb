@@ -1,8 +1,8 @@
 /** Minimal promise wrapper over IndexedDB, used by the background service worker. */
 
 const DB_NAME = 'bili2ytb';
-const DB_VERSION = 1;
-export type StoreName = 'comments' | 'files';
+const DB_VERSION = 2;
+export type StoreName = 'comments' | 'files' | 'lists';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -13,6 +13,7 @@ function open(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains('comments')) db.createObjectStore('comments');
       if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
+      if (!db.objectStoreNames.contains('lists')) db.createObjectStore('lists');
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
