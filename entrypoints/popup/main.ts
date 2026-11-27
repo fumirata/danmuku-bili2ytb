@@ -47,13 +47,14 @@ function paintRange(input: HTMLInputElement) {
   input.style.setProperty('--p', `${((Number(input.value) - min) / (max - min)) * 100}%`);
 }
 
-type RangeKey = 'opacity' | 'fontScale' | 'speed' | 'area' | 'maxPerSecond';
+type RangeKey = 'opacity' | 'fontScale' | 'speed' | 'area' | 'maxPerSecond' | 'weightLevel';
 const fmt: Record<RangeKey, (v: number) => string> = {
   opacity: (v) => `${Math.round(v * 100)}%`,
   fontScale: (v) => `${v.toFixed(2)}×`,
   speed: (v) => String(v),
   area: (v) => `${Math.round(v * 100)}%`,
   maxPerSecond: (v) => (v ? String(v) : '不限'),
+  weightLevel: (v) => (v ? `${v} 级` : '关闭'),
 };
 
 async function init() {

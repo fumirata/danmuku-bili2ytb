@@ -36,6 +36,7 @@ const base: MergeSettings = {
   dedupe: false,
   dedupeWindow: 3,
   maxPerSecond: 0,
+  weightLevel: 0,
 };
 
 describe('mergeComments', () => {
@@ -70,6 +71,18 @@ describe('mergeComments', () => {
     ]);
     const out = mergeComments([src('a')], map, { ...base, maxPerSecond: 2 });
     expect(out.map((x) => x.text)).toEqual(['y', 'z', 'w']);
+  });
+
+  it('hides low-weight comments, but not in sources without weights', () => {
+    const map = new Map([
+      ['a', [c(1, 'w1', { weight: 1 }), c(2, 'w5', { weight: 5 }), c(3, 'w0')]],
+      ['f', [c(1, 'file1'), c(2, 'file2')]],
+    ]);
+    const texts = (level: number) =>
+      mergeComments([src('a'), src('f')], map, { ...base, weightLevel: level }).map((x) => x.text);
+    expect(texts(0)).toEqual(['w1', 'file1', 'w5', 'file2', 'w0']);
+    expect(texts(5)).toEqual(['file1', 'w5', 'file2']);
+    expect(texts(6)).toEqual(['file1', 'file2']);
   });
 
   it('applies keyword, regex and mode filters', () => {

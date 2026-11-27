@@ -103,7 +103,7 @@ export class Session {
     const prev = this.settings;
     this.settings = next;
     this.overlay.setSettings(next);
-    const mergeKeys: (keyof Settings)[] = ['blockModes', 'blockKeywords', 'dedupe', 'dedupeWindow', 'maxPerSecond'];
+    const mergeKeys: (keyof Settings)[] = ['blockModes', 'blockKeywords', 'dedupe', 'dedupeWindow', 'maxPerSecond', 'weightLevel'];
     if (mergeKeys.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) this.remerge();
     else this.render();
   }

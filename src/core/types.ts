@@ -63,6 +63,8 @@ export interface Settings {
   area: number;
   /** 0 = unlimited */
   maxPerSecond: number;
+  /** 0 – 10, hides comments whose Bilibili weight is below this; 0 = off */
+  weightLevel: number;
   dedupe: boolean;
   /** seconds */
   dedupeWindow: number;
@@ -80,6 +82,7 @@ export const DEFAULT_SETTINGS: Settings = {
   speed: 144,
   area: 0.75,
   maxPerSecond: 0,
+  weightLevel: 0,
   dedupe: true,
   dedupeWindow: 3,
   blockModes: [],

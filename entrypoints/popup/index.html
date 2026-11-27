@@ -196,6 +196,11 @@
       <section id="filter" hidden>
         <div class="card">
           <div class="item">
+            <div class="item-head"><span class="label">屏蔽等级</span><span class="value" id="weightLevel-v"></span></div>
+            <input type="range" id="weightLevel" min="0" max="10" step="1" />
+            <div class="hint">按 B 站给每条弹幕的权重分（0–10）隐藏低分弹幕，等级越高隐藏越多，与 B 站播放器的智能云屏蔽类似。本地导入的弹幕文件没有权重，不受影响。</div>
+          </div>
+          <div class="item">
             <div class="item-head"><span class="label">每秒最多</span><span class="value" id="maxPerSecond-v"></span></div>
             <input type="range" id="maxPerSecond" min="0" max="60" step="1" />
           </div>

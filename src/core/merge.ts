@@ -3,7 +3,7 @@ import type { PlacedComment, RawComment, Settings, Source } from './types';
 
 export type MergeSettings = Pick<
   Settings,
-  'blockModes' | 'blockKeywords' | 'dedupe' | 'dedupeWindow' | 'maxPerSecond'
+  'blockModes' | 'blockKeywords' | 'dedupe' | 'dedupeWindow' | 'maxPerSecond' | 'weightLevel'
 >;
 
 /** Normalizes text for duplicate detection: NFKC, lower case, no whitespace, collapse repeated tails like "哈哈哈哈". */
@@ -18,6 +18,8 @@ export function normalizeText(text: string): string {
 /**
  * Places comments from every enabled source on the YouTube timeline:
  * apply offset → filter → dedupe → density limit → sort by time.
+ * The weight level only applies to sources that carry weights (Bilibili's own data);
+ * a source whose comments are all weight 0, such as an ASS file, is not filtered by it.
  */
 export function mergeComments(
   sources: Source[],
@@ -30,7 +32,9 @@ export function mergeComments(
     if (!s.enabled) continue;
     const list = commentsBySource.get(s.id);
     if (!list) continue;
+    const minWeight = settings.weightLevel > 0 && list.some((c) => c.weight > 0) ? settings.weightLevel : 0;
     for (const c of list) {
+      if (c.weight < minWeight) continue;
       const time = c.time + s.offset;
       if (time < 0) continue;
       if (!keep(c)) continue;
