@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import type { BiliErrorKind, VideoInfo } from './bili/client';
+import type { BiliErrorKind, SearchResult, VideoInfo } from './bili/client';
 import type { RawComment } from './core/types';
 
 export type Request =
@@ -7,7 +7,8 @@ export type Request =
   | { type: 'comments'; cid: number; duration: number; fresh?: boolean }
   | { type: 'putFile'; id: string; comments: RawComment[] }
   | { type: 'getFile'; id: string }
-  | { type: 'deleteFile'; id: string };
+  | { type: 'deleteFile'; id: string }
+  | { type: 'search'; keyword: string; page?: number };
 
 export interface ResponseMap {
   resolve: VideoInfo;
@@ -15,6 +16,7 @@ export interface ResponseMap {
   putFile: null;
   getFile: RawComment[];
   deleteFile: null;
+  search: SearchResult;
 }
 
 export type Reply<T> = { ok: true; data: T } | { ok: false; error: string; kind: BiliErrorKind };

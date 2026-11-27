@@ -1,6 +1,7 @@
 import type { RawComment } from '../core/types';
 import type { BiliRef } from './input';
 import { parseSeg, parseXml } from './parse';
+import { mixinKey, signQuery } from './wbi';
 
 export type BiliErrorKind = 'risk' | 'notfound' | 'network' | 'other';
 
@@ -105,4 +106,92 @@ export async function fetchComments(cid: number, duration: number): Promise<RawC
   }
   const xml = await (await request(`${API}/x/v1/dm/list.so?oid=${cid}`)).text();
   return parseXml(xml);
+}
+
+export interface SearchHit {
+  bvid: string;
+  title: string;
+  author: string;
+  /** seconds */
+  duration: number;
+  pic: string;
+  play: number;
+  danmaku: number;
+  /** unix seconds */
+  pubdate: number;
+}
+
+export interface SearchResult {
+  hits: SearchHit[];
+  page: number;
+  numPages: number;
+}
+
+let wbiKey: { key: string; day: string } | null = null;
+
+/** WBI keys rotate daily; cache for the day and refetch after a failure. */
+async function getWbiKey(refresh = false): Promise<string> {
+  const day = new Date().toDateString();
+  if (!refresh && wbiKey?.day === day) return wbiKey.key;
+  const j = (await (await request(`${API}/x/web-interface/nav`)).json()) as {
+    data?: { wbi_img?: { img_url: string; sub_url: string } };
+  };
+  const img = j.data?.wbi_img;
+  if (!img) throw new BiliError('获取 B 站签名密钥失败', 'other');
+  wbiKey = { key: mixinKey(img.img_url, img.sub_url), day };
+  return wbiKey.key;
+}
+
+/** Strips the `<em class="keyword">` highlight tags and decodes entities in search titles. */
+export function cleanTitle(s: string): string {
+  return s
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(lt|gt|amp|quot|#39|apos);/g, (_, e: string) =>
+      ({ lt: '<', gt: '>', amp: '&', quot: '"', '#39': "'", apos: "'" })[e] ?? '',
+    );
+}
+
+/** "1:02:03" / "12:50" → seconds */
+function parseDuration(s: string | number): number {
+  if (typeof s === 'number') return s;
+  return s.split(':').reduce((acc, p) => acc * 60 + (Number(p) || 0), 0);
+}
+
+interface RawHit {
+  type?: string;
+  bvid: string;
+  title: string;
+  author: string;
+  duration: string | number;
+  pic: string;
+  play: number;
+  danmaku?: number;
+  video_review?: number;
+  pubdate: number;
+}
+
+export async function searchVideos(keyword: string, page = 1): Promise<SearchResult> {
+  const run = async (refresh: boolean) => {
+    const key = await getWbiKey(refresh);
+    const q = signQuery({ search_type: 'video', keyword, page }, key);
+    return getJson<{ result?: RawHit[]; page?: number; numPages?: number; v_voucher?: string }>(
+      `${API}/x/web-interface/wbi/search/type?${q}`,
+    );
+  };
+  let d = await run(false);
+  if (!d.result && d.v_voucher) d = await run(true);
+  if (!d.result && d.v_voucher) throw new BiliError('搜索被 B 站风控拦截，请在浏览器中登录 B 站后重试', 'risk');
+  const hits = (d.result ?? [])
+    .filter((r) => (r.type ?? 'video') === 'video' && r.bvid)
+    .map((r) => ({
+      bvid: r.bvid,
+      title: cleanTitle(r.title),
+      author: r.author,
+      duration: parseDuration(r.duration),
+      pic: r.pic.startsWith('//') ? `https:${r.pic}` : r.pic,
+      play: r.play,
+      danmaku: r.danmaku ?? r.video_review ?? 0,
+      pubdate: r.pubdate,
+    }));
+  return { hits, page: d.page ?? page, numPages: d.numPages ?? 1 };
 }

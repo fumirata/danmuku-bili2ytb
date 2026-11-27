@@ -23,3 +23,11 @@
 
 ## mode 映射
 `1/2/3 → 滚动(rtl)`，`4 → 底部`，`5 → 顶部`，`6 → 逆向(ltr)`，`7/8/9`（高级/代码/BAS）忽略。
+
+## 搜索（2026-11-27 实测）
+
+- `x/web-interface/search/type`（不带 wbi）返回 HTML 拦截页，不可用。
+- `x/web-interface/wbi/search/type?search_type=video&keyword=…&page=…` 必须带 WBI 签名（`wts` + `w_rid`）；不签名时返回 `code 0` 但只有 `data.v_voucher`，没有结果。
+- 签名正确时不需要登录或 buvid 也能拿到结果，每页 20 条，最多 50 页。
+- 签名密钥来自 `x/web-interface/nav` 的 `wbi_img`（未登录时也返回，`code -101`），每天轮换。
+- 结果字段：`bvid`、`title`（含 `<em class="keyword">` 高亮）、`author`、`duration`（"mm:ss" 字符串，分钟可超过 59）、`pic`（`//` 开头）、`play`、`danmaku`、`pubdate`。

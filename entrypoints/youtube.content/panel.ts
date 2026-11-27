@@ -1,3 +1,5 @@
+import type { SearchHit, SearchResult } from '../../src/bili/client';
+import { parseBiliInput } from '../../src/bili/input';
 import type { Source } from '../../src/core/types';
 import { h } from './dom';
 import { findControlsBar, formatTime, parseTime } from './player';
@@ -24,6 +26,9 @@ export interface PanelActions {
   retry(id: string): void;
   setEnabled(on: boolean): void;
   currentTime(): number;
+  search(keyword: string, page: number): Promise<SearchResult>;
+  /** title of the current YouTube video, used when searching with an empty box */
+  videoTitle(): string;
 }
 
 const CSS = `
@@ -54,6 +59,15 @@ button.link { background: none; border: none; color: #8ab4f8; padding: 0 2px; }
 .err { color: #f28b82; font-size: 12px; }
 .sync { margin-top: 6px; padding: 6px; background: #262626; border-radius: 6px; }
 .foot { margin-top: 8px; color: #999; font-size: 12px; }
+.results { margin-top: 8px; border-top: 1px solid #333; }
+.hit { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #2a2a2a; }
+.hit img { width: 96px; height: 54px; object-fit: cover; border-radius: 4px; background: #333; flex: none; }
+.hit .body { flex: 1; min-width: 0; }
+.hit .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #eee;
+  text-decoration: none; }
+.hit .t:hover { color: #fb7299; }
+.hit button { align-self: center; flex: none; }
+.pager { margin-top: 6px; color: #999; font-size: 12px; }
 label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 `;
 
@@ -70,6 +84,9 @@ export class Panel {
   private button: HTMLElement;
   private syncFor: { id: string; ytTime: number } | null = null;
   private state: PanelState | null = null;
+  private results: HTMLDivElement;
+  private search: { keyword: string; result: SearchResult } | null = null;
+  private concat: HTMLInputElement;
 
   constructor(
     private player: HTMLElement,
@@ -82,8 +99,9 @@ export class Panel {
     const style = document.createElement('style');
     style.textContent = CSS;
 
-    const input = h('input', { type: 'text', placeholder: 'B站链接 / BV号 / av号' });
-    const concat = h('input', { type: 'checkbox' });
+    const input = h('input', { type: 'text', placeholder: 'B站链接 / BV号 / 搜索关键词' });
+    const concat = (this.concat = h('input', { type: 'checkbox' }));
+    this.results = h('div', { class: 'results', hidden: true });
     this.msg = h('div', { class: 'msg' });
     const submit = async () => {
       const value = input.value.trim();
@@ -97,7 +115,18 @@ export class Panel {
         this.setMsg((e as Error).message);
       }
     };
-    input.addEventListener('keydown', (e) => e.key === 'Enter' && submit());
+    const search = () => {
+      const keyword = input.value.trim() || actions.videoTitle();
+      if (!keyword) return this.setMsg('请输入搜索关键词');
+      input.value = keyword;
+      void this.runSearch(keyword, 1);
+    };
+    // Enter adds when the text is a link / BV / av id, otherwise searches.
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (parseBiliInput(input.value)) void submit();
+      else search();
+    });
 
     const fileInput = h('input', { type: 'file', accept: '.xml,.ass', hidden: true });
     fileInput.addEventListener('change', async () => {
@@ -136,7 +165,9 @@ export class Panel {
       h(
         'div',
         { class: 'section' },
-        h('div', { class: 'row' }, input, h('button', { class: 'primary', onclick: submit }, '添加')),
+        h('div', { class: 'row' }, input, h('button', { class: 'primary', onclick: submit }, '添加'),
+          h('button', { title: '在 B 站搜索；输入框为空时搜索当前 YouTube 视频标题', onclick: search }, '搜索'),
+        ),
         h(
           'div',
           { class: 'row between', style: 'margin-top:6px' },
@@ -149,6 +180,7 @@ export class Panel {
           fileInput,
         ),
         this.msg,
+        this.results,
       ),
       this.list,
       this.foot,
@@ -205,9 +237,97 @@ export class Panel {
         ? state.sources.map((s) => this.renderSource(s, state.status.get(s.id)))
         : [h('div', { class: 'meta' }, '还没有绑定 B 站视频。粘贴链接后点"添加"。')]),
     );
+    if (this.search) this.renderResults();
     this.foot.textContent = state.totalCount
       ? `共 ${state.totalCount} 条，显示 ${state.shownCount} 条（过滤/合并后）`
       : '';
+  }
+
+  private async runSearch(keyword: string, page: number) {
+    this.setMsg(`搜索"${keyword}"…`, true);
+    try {
+      const result = await this.actions.search(keyword, page);
+      this.search = { keyword, result };
+      this.setMsg(result.hits.length ? '' : '没有找到相关视频', true);
+      this.renderResults();
+    } catch (e) {
+      this.setMsg((e as Error).message);
+    }
+  }
+
+  private renderResults() {
+    const s = this.search;
+    this.results.hidden = !s || !s.result.hits.length;
+    if (!s || !s.result.hits.length) return this.results.replaceChildren();
+    const { keyword, result } = s;
+    const bound = new Set(this.state?.sources.map((x) => x.bvid));
+    const pager = h(
+      'div',
+      { class: 'row between pager' },
+      h(
+        'div',
+        { class: 'row' },
+        h(
+          'button',
+          { class: 'small', disabled: result.page <= 1, onclick: () => this.runSearch(keyword, result.page - 1) },
+          '上一页',
+        ),
+        `${result.page} / ${result.numPages}`,
+        h(
+          'button',
+          {
+            class: 'small',
+            disabled: result.page >= result.numPages,
+            onclick: () => this.runSearch(keyword, result.page + 1),
+          },
+          '下一页',
+        ),
+      ),
+      h(
+        'button',
+        { class: 'link', onclick: () => ((this.search = null), this.renderResults()) },
+        '收起',
+      ),
+    );
+    this.results.replaceChildren(...result.hits.map((hit) => this.renderHit(hit, bound.has(hit.bvid))), pager);
+  }
+
+  private renderHit(hit: SearchHit, added: boolean): HTMLElement {
+    const img = h('img', { src: `${hit.pic}@192w_108h_1c.webp`, referrerpolicy: 'no-referrer', alt: '', loading: 'lazy' });
+    img.addEventListener('error', () => (img.style.visibility = 'hidden'), { once: true });
+    const btn = h('button', { class: 'small primary', disabled: added }, added ? '已添加' : '添加');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      this.setMsg('解析中…', true);
+      try {
+        this.setMsg((await this.actions.add(hit.bvid, this.concat.checked)) ?? '已添加', true);
+        btn.textContent = '已添加';
+      } catch (e) {
+        btn.disabled = false;
+        this.setMsg((e as Error).message);
+      }
+    });
+    const date = new Date(hit.pubdate * 1000).toLocaleDateString('zh-CN');
+    return h(
+      'div',
+      { class: 'hit' },
+      img,
+      h(
+        'div',
+        { class: 'body' },
+        h(
+          'a',
+          { class: 't', href: `https://www.bilibili.com/video/${hit.bvid}`, target: '_blank', rel: 'noopener', title: hit.title },
+          hit.title,
+        ),
+        h(
+          'div',
+          { class: 'meta' },
+          `${hit.author} · ${formatTime(hit.duration, false)} · ${compact(hit.play)}播放 · ${compact(hit.danmaku)}弹幕 · ${date}`,
+        ),
+      ),
+      btn,
+    );
   }
 
   private renderSource(s: Source, st: SourceStatus | undefined): HTMLElement {
@@ -321,4 +441,8 @@ export class Panel {
   private rerender() {
     if (this.state) this.render(this.state);
   }
+}
+
+function compact(n: number): string {
+  return n >= 1e8 ? `${(n / 1e8).toFixed(1)}亿` : n >= 1e4 ? `${(n / 1e4).toFixed(1)}万` : String(n);
 }

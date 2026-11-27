@@ -31,6 +31,10 @@ export class Session {
       retry: (id) => this.load(this.sources.find((s) => s.id === id), true),
       setEnabled: (on) => void saveSettings({ enabled: on }),
       currentTime: () => els.video.currentTime,
+      search: (keyword, page) => send({ type: 'search', keyword, page }),
+      videoTitle: () =>
+        document.querySelector('ytd-watch-metadata h1')?.textContent?.trim() ||
+        document.title.replace(/^\(\d+\)\s*/, '').replace(/ - YouTube$/, ''),
     });
   }
 

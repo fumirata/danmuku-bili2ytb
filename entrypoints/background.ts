@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
-import { BiliError, fetchComments, resolveVideo } from '../src/bili/client';
+import { BiliError, fetchComments, resolveVideo, searchVideos } from '../src/bili/client';
 import { parseBiliInput } from '../src/bili/input';
 import type { RawComment } from '../src/core/types';
 import { idbDelete, idbGet, idbPrune, idbPut } from '../src/idb';
@@ -43,6 +43,8 @@ async function handle(req: Request): Promise<unknown> {
       if (!list) throw new BiliError('本地弹幕文件数据已丢失，请删除后重新导入', 'notfound');
       return list;
     }
+    case 'search':
+      return searchVideos(req.keyword, req.page);
     case 'deleteFile':
       await idbDelete('files', req.id);
       return null;
