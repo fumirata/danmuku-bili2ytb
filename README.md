@@ -14,6 +14,19 @@ pnpm build      # 产出 .output/chrome-mv3
 
 手动加载：打开 `chrome://extensions`，开启"开发者模式"，点"加载已解压的扩展程序"，选择 `.output/chrome-mv3`。
 
+## 发布
+
+推送 `v` 开头的版本标签后，GitHub Actions（[.github/workflows/release.yml](.github/workflows/release.yml)）会做类型检查、测试和打包，并创建 Release，附上 `*-chrome.zip`。
+
+```powershell
+npm version 0.2.0          # 改 package.json 的版本号，并创建提交和 v0.2.0 标签
+git push --follow-tags     # 推送提交和标签，触发发布
+```
+
+- 标签必须和 `package.json` 的版本号一致，否则工作流会报错退出。
+- 标签里带连字符（如 `v0.2.0-beta.1`）的会发布为预发布版本。
+- 在 Actions 页面手动运行 Release 工作流时只做构建，zip 作为工作流产物上传，不创建 Release。
+
 ## 使用
 
 1. 打开任意 YouTube 视频，点控制栏右侧的 **弹** 按钮。

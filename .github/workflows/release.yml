@@ -1,0 +1,85 @@
+# Builds the extension and publishes a GitHub Release.
+#
+# - Push a tag like v0.2.0 → type check, test, zip, create a Release with the zip attached.
+#   The tag must match "version" in package.json; tags with a hyphen (v0.2.0-beta.1) become pre-releases.
+# - Run manually (Actions → Release → Run workflow) → same build, zip uploaded as a workflow artifact only.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm version comes from "packageManager" in package.json
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check tag matches package.json version
+        if: github.ref_type == 'tag'
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      - name: Type check
+        run: pnpm compile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build and zip
+        run: pnpm zip
+
+      - name: Upload zip as artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: chrome-extension
+          path: .output/*-chrome.zip
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip=$(ls .output/*-chrome.zip)
+          prerelease=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease=(--prerelease); fi
+          notes=$(cat <<'EOF'
+          ## 安装
+
+          1. 下载下方的 `*-chrome.zip` 并解压到一个固定的文件夹
+          2. 打开 `chrome://extensions`，开启"开发者模式"
+          3. 点"加载已解压的扩展程序"，选择解压后的文件夹
+          4. 升级时，用新版本覆盖该文件夹，然后在扩展管理页点刷新
+
+          EOF
+          )
+          gh release create "$GITHUB_REF_NAME" "$zip" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$notes" \
+            --generate-notes \
+            "${prerelease[@]}"
