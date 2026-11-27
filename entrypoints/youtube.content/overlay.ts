@@ -12,15 +12,34 @@ function hex(color: number): string {
   return '#' + (color & 0xffffff).toString(16).padStart(6, '0');
 }
 
-/** Canvas layer on top of the YouTube video that renders comments in sync with it. */
+function scaleFor(height: number): number {
+  return Math.min(2.5, Math.max(0.6, (height || REFERENCE_HEIGHT) / REFERENCE_HEIGHT));
+}
+
+/**
+ * Canvas layer on top of the YouTube video that renders comments in sync with it.
+ *
+ * Comments are rendered once at the size they would have in a full-screen player (`built`), on a
+ * stage that is CSS-scaled down to the current player. Resizing the player (entering or leaving
+ * full screen, theater mode) only changes that scale, so comments on screen keep moving instead of
+ * being cleared by a rebuild.
+ */
 export class Overlay {
+  /** clips to the danmaku area */
   private root: HTMLDivElement;
+  /** danmaku container, sized in "built" pixels and scaled to fit `root` */
+  private stage: HTMLDivElement;
   private dm: Danmaku | null = null;
   private comments: PlacedComment[] = [];
   private ro: ResizeObserver;
   private unwatchAds: () => void;
-  private scale = 1;
-  private resizeTimer = 0;
+  /** scale the comment fonts were rendered at */
+  private built = 1;
+  /** current CSS scale of the stage = player scale / built */
+  private ratio = 1;
+  private resizeFrame = 0;
+  /** stage size the danmaku engine last measured */
+  private size = '';
 
   constructor(
     private player: HTMLElement,
@@ -31,9 +50,13 @@ export class Overlay {
     this.root.className = 'bili2ytb-overlay';
     this.root.style.cssText =
       'position:absolute;left:0;top:0;width:100%;pointer-events:none;overflow:hidden;z-index:35;';
+    this.stage = document.createElement('div');
+    this.stage.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;';
+    this.root.appendChild(this.stage);
     player.appendChild(this.root);
     this.applyStyle();
-    this.scale = this.computeScale();
+    this.built = this.targetScale();
+    this.layout();
 
     this.ro = new ResizeObserver(() => this.onResize());
     this.ro.observe(player);
@@ -51,14 +74,14 @@ export class Overlay {
     this.applyStyle();
     if (prev.fontScale !== next.fontScale || prev.enabled !== next.enabled) this.rebuild();
     else {
-      if (this.dm && prev.speed !== next.speed) this.dm.speed = next.speed;
-      if (prev.area !== next.area) this.dm?.resize();
+      if (this.dm && prev.speed !== next.speed) this.dm.speed = next.speed / this.ratio;
+      if (prev.area !== next.area) this.layout();
       this.applyVisibility();
     }
   }
 
   destroy() {
-    clearTimeout(this.resizeTimer);
+    cancelAnimationFrame(this.resizeFrame);
     this.ro.disconnect();
     this.unwatchAds();
     this.dm?.destroy();
@@ -66,9 +89,24 @@ export class Overlay {
     this.root.remove();
   }
 
-  private computeScale(): number {
-    const h = this.player.clientHeight || REFERENCE_HEIGHT;
-    return Math.min(2.5, Math.max(0.6, h / REFERENCE_HEIGHT));
+  /** Render scale: big enough for full screen, or for the player if it is larger still. */
+  private targetScale(): number {
+    return Math.max(scaleFor(screen.height), scaleFor(this.player.clientHeight));
+  }
+
+  /** Sizes and scales the stage to the current player; keeps the visible speed in screen pixels. */
+  private layout() {
+    this.ratio = scaleFor(this.player.clientHeight) / this.built;
+    const w = Math.round(this.root.clientWidth / this.ratio);
+    const h = Math.round(this.root.clientHeight / this.ratio);
+    this.stage.style.width = `${w}px`;
+    this.stage.style.height = `${h}px`;
+    this.stage.style.transform = `scale(${this.ratio})`;
+    const changed = this.size !== `${w}x${h}`;
+    this.size = `${w}x${h}`;
+    if (!this.dm) return;
+    this.dm.speed = this.settings.speed / this.ratio;
+    if (changed) this.dm.resize();
   }
 
   private applyStyle() {
@@ -83,19 +121,19 @@ export class Overlay {
   }
 
   private onResize() {
-    clearTimeout(this.resizeTimer);
-    this.resizeTimer = window.setTimeout(() => {
-      const s = this.computeScale();
-      // Font sizes are baked into each comment's canvas, so a big size change needs a rebuild.
-      if (Math.abs(s - this.scale) / this.scale > 0.1) {
-        this.scale = s;
+    cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = requestAnimationFrame(() => {
+      // Only a player bigger than the render size (e.g. moved to a larger monitor) needs new canvases;
+      // anything smaller is just scaled down.
+      if (this.targetScale() > this.built * 1.05) {
+        this.built = this.targetScale();
         this.rebuild();
-      } else this.dm?.resize();
-    }, 150);
+      } else this.layout();
+    });
   }
 
   private toDm(c: PlacedComment): DmComment {
-    const px = Math.round(c.size * this.scale * this.settings.fontScale);
+    const px = Math.round(c.size * this.built * this.settings.fontScale);
     const dark = (c.color & 0xffffff) < 0x303030;
     return {
       text: c.count > 1 ? `${c.text} ×${c.count}` : c.text,
@@ -115,12 +153,13 @@ export class Overlay {
     this.dm?.destroy();
     this.dm = null;
     if (!this.settings.enabled || this.comments.length === 0) return;
+    this.layout();
     this.dm = new Danmaku({
-      container: this.root,
+      container: this.stage,
       media: this.video,
       comments: this.comments.map((c) => this.toDm(c)),
       engine: 'canvas',
-      speed: this.settings.speed,
+      speed: this.settings.speed / this.ratio,
     });
     this.applyVisibility();
   }
