@@ -21,7 +21,9 @@ export function onSettingsChanged(cb: (s: Settings) => void): () => void {
       cb({ ...DEFAULT_SETTINGS, ...((changes[SETTINGS_KEY].newValue as Partial<Settings>) ?? {}) });
   };
   browser.storage.onChanged.addListener(listener);
-  return () => browser.storage.onChanged.removeListener(listener);
+  // Called from ctx.onInvalidated: after the extension is reloaded/updated, Chrome has already
+  // detached the old content script from extension APIs, so `browser.storage` is undefined.
+  return () => browser.storage?.onChanged.removeListener(listener);
 }
 
 export async function loadBinding(ytId: string): Promise<Source[]> {
