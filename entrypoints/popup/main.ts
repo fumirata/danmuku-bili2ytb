@@ -13,7 +13,39 @@ import {
 } from '../../src/storage';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const msg = (t: string) => ($('msg').textContent = t);
+let msgTimer = 0;
+/** Toast at the bottom; stays while it holds a button (e.g. the grant button). */
+function msg(t: string) {
+  const box = $('msg');
+  box.textContent = t;
+  clearTimeout(msgTimer);
+  const hide = () => {
+    if (box.querySelector('button')) msgTimer = window.setTimeout(hide, 4000);
+    else box.textContent = '';
+  };
+  if (!/…$/.test(t)) msgTimer = window.setTimeout(hide, 4000);
+}
+
+function initTabs() {
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('nav [data-tab]')];
+  const show = (name: string) => {
+    for (const t of tabs) {
+      const on = t.dataset.tab === name;
+      t.setAttribute('aria-selected', String(on));
+      $(t.dataset.tab!).hidden = !on;
+    }
+    localStorage.setItem('popupTab', name);
+  };
+  for (const t of tabs) t.onclick = () => show(t.dataset.tab!);
+  const saved = localStorage.getItem('popupTab');
+  show(tabs.some((t) => t.dataset.tab === saved) ? saved! : tabs[0]!.dataset.tab!);
+}
+
+/** Fills the slider track up to the thumb. */
+function paintRange(input: HTMLInputElement) {
+  const min = Number(input.min), max = Number(input.max);
+  input.style.setProperty('--p', `${((Number(input.value) - min) / (max - min)) * 100}%`);
+}
 
 type RangeKey = 'opacity' | 'fontScale' | 'speed' | 'area' | 'maxPerSecond';
 const fmt: Record<RangeKey, (v: number) => string> = {
@@ -25,6 +57,7 @@ const fmt: Record<RangeKey, (v: number) => string> = {
 };
 
 async function init() {
+  initTabs();
   const s = await loadSettings();
 
   const enabled = $<HTMLInputElement>('enabled');
@@ -40,7 +73,11 @@ async function init() {
     const label = $(`${key}-v`);
     input.value = String(s[key]);
     label.textContent = fmt[key](s[key]);
-    input.oninput = () => (label.textContent = fmt[key](Number(input.value)));
+    paintRange(input);
+    input.oninput = () => {
+      label.textContent = fmt[key](Number(input.value));
+      paintRange(input);
+    };
     input.onchange = () => saveSettings({ [key]: Number(input.value) } as Partial<Settings>);
   }
 
@@ -145,28 +182,39 @@ async function renderSubs() {
   const status = new Map((await send({ type: 'listStatus' }).catch(() => [] as ListStatus[])).map((x) => [x.url, x]));
   const box = $('subs');
   if (!subs.length) {
-    box.replaceChildren(el('div', { className: 'hint', textContent: '还没有订阅。' }));
+    box.replaceChildren(
+      el('div', { className: 'empty' }, el('b', { textContent: '还没有订阅' }), '在上面粘贴别人分享的订阅文件地址'),
+    );
     return;
   }
-  const save = async (next: typeof subs) => {
-    await saveSubscriptions(next);
-    await renderSubs();
+  // Each change re-reads the stored list and finds its row by url, so quick successive clicks
+  // don't overwrite each other through a stale copy.
+  let queue: Promise<unknown> = Promise.resolve();
+  const save = (url: string, change: (list: typeof subs, i: number) => typeof subs) => {
+    queue = queue.then(async () => {
+      const cur = await loadSubscriptions();
+      const i = cur.findIndex((x) => x.url === url);
+      if (i >= 0) await saveSubscriptions(change(cur, i));
+      await renderSubs();
+    });
   };
   box.replaceChildren(
     ...subs.map((sub, i) => {
       const st = status.get(sub.url);
-      const enabled = el('input', { type: 'checkbox', checked: sub.enabled, title: '启用' });
-      enabled.onchange = () => save(subs.map((x, j) => (j === i ? { ...x, enabled: enabled.checked } : x)));
-      const btn = (text: string, title: string, fn: () => void, disabled = false) => {
-        const b = el('button', { textContent: text, title, disabled });
+      const enabled = el('input', { type: 'checkbox', className: 'switch', checked: sub.enabled, title: '启用' });
+      enabled.onchange = () => save(sub.url, (l, k) => l.map((x, j) => (j === k ? { ...x, enabled: enabled.checked } : x)));
+      const btn = (text: string, title: string, fn: () => void, disabled = false, danger = false) => {
+        const b = el('button', { className: danger ? 'icon danger' : 'icon', textContent: text, title, disabled });
         b.onclick = fn;
         return b;
       };
-      const move = (d: number) => {
-        const next = [...subs];
-        [next[i], next[i + d]] = [next[i + d]!, next[i]!];
-        void save(next);
-      };
+      const move = (d: number) =>
+        save(sub.url, (l, k) => {
+          if (!l[k + d]) return l;
+          const next = [...l];
+          [next[k], next[k + d]] = [next[k + d]!, next[k]!];
+          return next;
+        });
       const refresh = async () => {
         msg('刷新中…');
         const [r] = await send({ type: 'refreshLists', url: sub.url });
@@ -174,10 +222,12 @@ async function renderSubs() {
         if (r?.needsPermission) showGrant(sub.url, refresh);
         await renderSubs();
       };
-      const when = st?.fetchedAt ? new Date(st.fetchedAt).toLocaleString('zh-CN', { hour12: false }) : '未下载';
+      const when = st?.fetchedAt
+        ? new Date(st.fetchedAt).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '未下载';
       return el(
         'div',
-        { className: 'sub' },
+        { className: sub.enabled ? 'sub' : 'sub off' },
         el(
           'div',
           { className: 'row' },
@@ -188,12 +238,16 @@ async function renderSubs() {
             { className: 'tools' },
             btn('↑', '提高优先级', () => move(-1), i === 0),
             btn('↓', '降低优先级', () => move(1), i === subs.length - 1),
-            btn('刷新', '重新下载', () => void refresh()),
-            btn('删除', '取消订阅', () => void save(subs.filter((_, j) => j !== i))),
+            btn('↻', '重新下载', () => void refresh()),
+            btn('✕', '取消订阅', () => save(sub.url, (l, k) => l.filter((_, j) => j !== k)), false, true),
           ),
         ),
-        el('div', { className: 'url', textContent: sub.url }),
-        el('div', { className: 'hint', textContent: `${st?.count ?? 0} 个视频 · 下载于 ${when}` }),
+        el(
+          'div',
+          { className: 'meta' },
+          el('div', { textContent: `${st?.count ?? 0} 个视频 · ${when}` }),
+          el('div', { className: 'url', title: sub.url, textContent: sub.url }),
+        ),
         ...(st?.error ? [el('div', { className: 'err', textContent: st.error })] : []),
       );
     }),
