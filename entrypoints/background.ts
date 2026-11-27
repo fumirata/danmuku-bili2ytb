@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
-import { BiliError, fetchComments, resolveVideo, searchVideos } from '../src/bili/client';
-import { parseBiliInput } from '../src/bili/input';
+import { BiliError, fetchComments, resolveVideo, searchVideos, type VideoInfo } from '../src/bili/client';
+import { type BiliRef, parseBiliInput } from '../src/bili/input';
 import type { RawComment } from '../src/core/types';
 import { idbDelete, idbGet, idbPrune, idbPut } from '../src/idb';
 import { listStatus, lookup, onSubscriptionsEdited, REFRESH_MINUTES, refreshAll, refreshList, subscribe } from '../src/lists';
@@ -28,12 +28,24 @@ async function cachedComments(cid: number, duration: number, fresh: boolean): Pr
   return list;
 }
 
+/** Video info (title, pages, cids) changes rarely; subscribed entries resolve it on every page open. */
+const VIDEO_TTL = 7 * 24 * 60 * 60 * 1000;
+
+async function cachedVideo(ref: BiliRef): Promise<VideoInfo> {
+  const key = ref.bvid ?? `av${ref.aid}`;
+  const hit = await idbGet<{ at: number; info: VideoInfo }>('videos', key).catch(() => undefined);
+  if (hit && Date.now() - hit.at < VIDEO_TTL) return hit.info;
+  const info = await resolveVideo(ref);
+  await idbPut('videos', key, { at: Date.now(), info }).catch(() => {});
+  return info;
+}
+
 async function handle(req: Request): Promise<unknown> {
   switch (req.type) {
     case 'resolve': {
       const ref = parseBiliInput(req.input);
       if (!ref) throw new BiliError('无法识别的 B 站链接或 BV/av 号', 'other');
-      return { ...(await resolveVideo(ref)), requestedPage: ref.page };
+      return { ...(await cachedVideo(ref)), requestedPage: ref.page };
     }
     case 'comments':
       return cachedComments(req.cid, req.duration, req.fresh ?? false);
@@ -63,6 +75,7 @@ async function handle(req: Request): Promise<unknown> {
 
 export default defineBackground(() => {
   void idbPrune<CacheEntry>('comments', (e) => Date.now() - e.at > CACHE_TTL).catch(() => {});
+  void idbPrune<{ at: number }>('videos', (e) => Date.now() - e.at > VIDEO_TTL).catch(() => {});
 
   const ALARM = 'refresh-lists';
   void browser.alarms.get(ALARM).then((a) => {

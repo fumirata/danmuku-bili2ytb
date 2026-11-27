@@ -71,7 +71,8 @@ export function buildList(
   const entries: Record<string, ListEntry[]> = {};
   for (const [ytId, sources] of Object.entries(bindings)) {
     const list = sources
-      .filter((s) => s.kind !== 'file' && BVID.test(s.bvid))
+      // local files can't be shared; a disabled override only hides someone else's entry for this user
+      .filter((s) => s.kind !== 'file' && BVID.test(s.bvid) && !(s.from && !s.enabled))
       .map((s) => ({ bvid: s.bvid, page: s.page, offset: s.offset }));
     if (YT_ID.test(ytId) && list.length) entries[ytId] = list;
   }

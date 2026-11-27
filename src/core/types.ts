@@ -34,6 +34,21 @@ export interface Source {
   /** seconds added to every comment time of this source */
   offset: number;
   enabled: boolean;
+  /** saved: this own source overrides (offset / enabled) the entry of the subscribed list at this URL */
+  from?: string;
+  /** runtime only, never saved: the subscribed list that provides this page */
+  list?: SourceList;
+}
+
+export interface SourceList {
+  url: string;
+  name: string;
+  /** offset given by the list */
+  offset: number;
+  /** lower-priority lists that also provide this page */
+  others: { name: string; offset: number }[];
+  /** an own source replaces the list's entry */
+  overridden: boolean;
 }
 
 export interface Settings {
@@ -54,8 +69,6 @@ export interface Settings {
   blockModes: DmMode[];
   /** plain substrings, or /regex/flags */
   blockKeywords: string[];
-  /** add sources from subscribed lists automatically when a video has no binding of its own */
-  autoApplyLists: boolean;
   /** name written into exported list files */
   listName: string;
 }
@@ -71,7 +84,6 @@ export const DEFAULT_SETTINGS: Settings = {
   dedupeWindow: 3,
   blockModes: [],
   blockKeywords: [],
-  autoApplyLists: false,
   listName: '',
 };
 

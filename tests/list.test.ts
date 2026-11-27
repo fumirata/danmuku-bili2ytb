@@ -58,6 +58,19 @@ describe('parseList', () => {
 });
 
 describe('buildList', () => {
+  it('exports overrides but not disabled ones', () => {
+    const built = buildList(
+      {
+        ujkD4SxPKOI: [
+          src({ from: 'https://a/list.json', offset: 3 }),
+          src({ page: 2, from: 'https://a/list.json', enabled: false }),
+        ],
+      },
+      { name: 'x' },
+    );
+    expect(built.entries).toEqual({ ujkD4SxPKOI: [{ bvid: 'BV1AXpc6KEMc', page: 1, offset: 3 }] });
+  });
+
   it('skips local files and round-trips', () => {
     const built = buildList(
       {

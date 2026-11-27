@@ -61,14 +61,6 @@ async function init() {
     msg(`已导出 ${Object.keys(data).length} 个视频的绑定`);
   };
 
-  const auto = $<HTMLInputElement>('autoApplyLists');
-  auto.checked = s.autoApplyLists;
-  auto.onchange = () =>
-    saveSettings({ autoApplyLists: auto.checked }).then(
-      (n) => msg(n.autoApplyLists ? '已开启：没有绑定的视频会自动使用订阅' : '已关闭自动使用订阅'),
-      (e: Error) => msg(`保存失败：${e.message}`),
-    );
-
   const listName = $<HTMLInputElement>('listName');
   listName.value = s.listName;
   listName.onchange = () => saveSettings({ listName: listName.value.trim() });
