@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>B站弹幕 for YouTube</title>
+    <style>
+      body { width: 320px; margin: 0; padding: 14px; font: 13px/1.5 "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #222; }
+      h1 { font-size: 16px; margin: 0 0 10px; color: #fb7299; }
+      .field { margin: 10px 0; }
+      .field > label { display: flex; justify-content: space-between; }
+      input[type='range'] { width: 100%; }
+      textarea { width: 100%; box-sizing: border-box; height: 70px; font: inherit; }
+      .modes label { margin-right: 10px; }
+      .hint { color: #888; font-size: 12px; }
+      .row { display: flex; gap: 8px; }
+      button { padding: 4px 10px; }
+      #msg { color: #1a7f37; min-height: 1.5em; }
+    </style>
+  </head>
+  <body>
+    <h1>B站弹幕 for YouTube</h1>
+    <div class="field"><label><span>显示弹幕</span><input type="checkbox" id="enabled" /></label></div>
+    <div class="field">
+      <label><span>不透明度</span><span id="opacity-v"></span></label>
+      <input type="range" id="opacity" min="0.1" max="1" step="0.05" />
+    </div>
+    <div class="field">
+      <label><span>字号</span><span id="fontScale-v"></span></label>
+      <input type="range" id="fontScale" min="0.5" max="2" step="0.05" />
+    </div>
+    <div class="field">
+      <label><span>滚动速度（像素/秒）</span><span id="speed-v"></span></label>
+      <input type="range" id="speed" min="60" max="400" step="10" />
+    </div>
+    <div class="field">
+      <label><span>显示区域</span><span id="area-v"></span></label>
+      <input type="range" id="area" min="0.25" max="1" step="0.25" />
+    </div>
+    <div class="field">
+      <label><span>每秒最多（0 = 不限）</span><span id="maxPerSecond-v"></span></label>
+      <input type="range" id="maxPerSecond" min="0" max="60" step="1" />
+    </div>
+    <div class="field"><label><span>合并重复弹幕（3 秒内）</span><input type="checkbox" id="dedupe" /></label></div>
+    <div class="field modes">
+      屏蔽类型：
+      <label><input type="checkbox" data-mode="rtl" />滚动</label>
+      <label><input type="checkbox" data-mode="top" />顶部</label>
+      <label><input type="checkbox" data-mode="bottom" />底部</label>
+      <label><input type="checkbox" data-mode="ltr" />逆向</label>
+    </div>
+    <div class="field">
+      屏蔽词（每行一个，<code>/正则/</code> 亦可）
+      <textarea id="blockKeywords"></textarea>
+    </div>
+    <div class="field">
+      <div class="row">
+        <button id="export">导出绑定</button>
+        <button id="import">导入绑定</button>
+        <input type="file" id="file" accept=".json,application/json" hidden />
+      </div>
+      <div class="hint">绑定 = 每个 YouTube 视频对应的 B 站来源与偏移</div>
+    </div>
+    <div id="msg"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

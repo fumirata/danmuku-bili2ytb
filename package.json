@@ -1,0 +1,24 @@
+{
+  "name": "danmuku-bili2ytb",
+  "description": "在 YouTube 上显示一个或多个哔哩哔哩视频的弹幕",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "compile": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "danmaku": "^2.0.10"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.4",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "wxt": "^0.21.5"
+  }
+}
