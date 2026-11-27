@@ -2,7 +2,7 @@
   "name": "danmuku-bili2ytb",
   "description": "在 YouTube 上显示一个或多个哔哩哔哩视频的弹幕",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "packageManager": "pnpm@12.21.0",
   "scripts": {
