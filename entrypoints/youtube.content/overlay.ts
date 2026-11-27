@@ -12,6 +12,9 @@ function hex(color: number): string {
   return '#' + (color & 0xffffff).toString(16).padStart(6, '0');
 }
 
+/** Font scale when fonts keep one size in every player: 25px Bilibili text → 20px on screen. */
+const FIXED_SCALE = 0.8;
+
 function scaleFor(height: number): number {
   return Math.min(2.5, Math.max(0.6, (height || REFERENCE_HEIGHT) / REFERENCE_HEIGHT));
 }
@@ -23,6 +26,9 @@ function scaleFor(height: number): number {
  * stage that is CSS-scaled down to the current player. Resizing the player (entering or leaving
  * full screen, theater mode) only changes that scale, so comments on screen keep moving instead of
  * being cleared by a rebuild.
+ *
+ * With `scaleWithPlayer` off, fonts keep one screen size: the stage is not scaled and a resize only
+ * widens or narrows it.
  */
 export class Overlay {
   /** clips to the danmaku area */
@@ -72,7 +78,10 @@ export class Overlay {
     const prev = this.settings;
     this.settings = next;
     this.applyStyle();
-    if (prev.fontScale !== next.fontScale || prev.enabled !== next.enabled) this.rebuild();
+    if (prev.scaleWithPlayer !== next.scaleWithPlayer) {
+      this.built = this.targetScale();
+      this.rebuild();
+    } else if (prev.fontScale !== next.fontScale || prev.enabled !== next.enabled) this.rebuild();
     else {
       if (this.dm && prev.speed !== next.speed) this.dm.speed = next.speed / this.ratio;
       if (prev.area !== next.area) this.layout();
@@ -89,14 +98,20 @@ export class Overlay {
     this.root.remove();
   }
 
+  /** Font scale for the current player. */
+  private playerScale(): number {
+    return this.settings.scaleWithPlayer ? scaleFor(this.player.clientHeight) : FIXED_SCALE;
+  }
+
   /** Render scale: big enough for full screen, or for the player if it is larger still. */
   private targetScale(): number {
-    return Math.max(scaleFor(screen.height), scaleFor(this.player.clientHeight));
+    if (!this.settings.scaleWithPlayer) return FIXED_SCALE;
+    return Math.max(scaleFor(screen.height), this.playerScale());
   }
 
   /** Sizes and scales the stage to the current player; keeps the visible speed in screen pixels. */
   private layout() {
-    this.ratio = scaleFor(this.player.clientHeight) / this.built;
+    this.ratio = this.playerScale() / this.built;
     const w = Math.round(this.root.clientWidth / this.ratio);
     const h = Math.round(this.root.clientHeight / this.ratio);
     this.stage.style.width = `${w}px`;

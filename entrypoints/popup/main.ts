@@ -65,6 +65,10 @@ async function init() {
   enabled.checked = s.enabled;
   enabled.onchange = () => saveSettings({ enabled: enabled.checked });
 
+  const scaleWithPlayer = $<HTMLInputElement>('scaleWithPlayer');
+  scaleWithPlayer.checked = s.scaleWithPlayer;
+  scaleWithPlayer.onchange = () => saveSettings({ scaleWithPlayer: scaleWithPlayer.checked });
+
   const dedupe = $<HTMLInputElement>('dedupe');
   dedupe.checked = s.dedupe;
   dedupe.onchange = () => saveSettings({ dedupe: dedupe.checked });

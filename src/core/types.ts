@@ -57,6 +57,8 @@ export interface Settings {
   opacity: number;
   /** font size multiplier */
   fontScale: number;
+  /** true: fonts grow and shrink with the player; false: same screen size in every player size */
+  scaleWithPlayer: boolean;
   /** pixels per second for scrolling comments */
   speed: number;
   /** fraction of the player height comments may use */
@@ -79,6 +81,7 @@ export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
   opacity: 0.85,
   fontScale: 1,
+  scaleWithPlayer: false,
   speed: 144,
   area: 0.75,
   maxPerSecond: 0,
